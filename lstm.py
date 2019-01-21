@@ -4,17 +4,11 @@ import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
 import math
-# import torch.nn.Parameter as Parameter
 
 _VF = torch._C._VariableFunctions
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-cpu = torch.device("cpu")
-
-def rectify(x):
-    relu = nn.ReLU()
-    return relu(x)
-    # return x
+# Unoptimized implementation
+# Directly running on cuda will not speed it up. Needs batching.
 
 class LstmModule(nn.Module):
     def __init__(self, input_units, output_units, hidden_units, bias = True, num_chunks = 4, embedding_dim = 50, rectify_inputs = True, var_input = 0.01**2, var_rec = 0.15**2, dt = 0.5, tau=100):
@@ -69,23 +63,16 @@ class LstmModule(nn.Module):
             print('ho')
 
         hprev, cprev = hx
-        # print(self.weight_ih.size())
-        # print(input_.size(), input_)
-        # print(self.bias_ih.size())
-        # print(hprev.size())
         w_x = torch.addmv(self.bias_ih, self.weight_ih, input_)
         w_h = torch.addmv(self.bias_hh, self.weight_hh, hprev)
         w_w = w_x + w_h
 
-        o = self.sigmoid(w_w[0 : self.hidden_size])
-        g = self.tanh(w_w[self.hidden_size : 2*self.hidden_size])
-        # i = self.sigmoid(w_w[0 : self.hidden_size])
-        # f = self.sigmoid(w_w[self.hidden_size : 2*self.hidden_size])
-        # o = self.sigmoid(w_w[2*self.hidden_size : 3*self.hidden_size])
-        # g = self.tanh(w_w[3*self.hidden_size : 4*self.hidden_size])
+        i = self.sigmoid(w_w[0 : self.hidden_size])
+        f = self.sigmoid(w_w[self.hidden_size : 2*self.hidden_size])
+        o = self.sigmoid(w_w[2*self.hidden_size : 3*self.hidden_size])
+        g = self.tanh(w_w[3*self.hidden_size : 4*self.hidden_size])
 
-        # c = (f * cprev) + (i * g)
-        c = ((1.0 - use_gate) * cprev) + (use_gate * g)
+        c = (f * cprev) + (i * g)
         h = o * self.tanh(c)
 
         return (h, c), o
@@ -133,52 +120,10 @@ class LSTM(nn.Module):
         for layer in range(self.num_layers):
             cell = self.get_cell(layer)
 
-            # output = []
-            # states = states_init
             for time in range(max_time):
-                inputx = torch.tensor(input_[time], requires_grad = False)#.to(device)
+                inputx = torch.tensor(input_[time], requires_grad = False)
                 state, outs = cell(input_ = self.embedding_layer(inputx), hx = state)
-
-                # output.append(outs)
-                # states = next_states
-                # last_outs = outs
-            
-            # layer_states = states
-            # layer_output = torch.stack(output, 0)
-            # all_layers_last_hidden.append(state)
-
-            # input_ = self.dropout_layer(layer_output)
-            # state_n.append(layer_states)
-
-        # state_n = torch.stack(state_n, 0)
-        # output = torch.stack(all_layers_last_hidden, 0)
-        # output = output.view(self.output_units * self.embedding_dim * self.num_layers)
         hlast, clast = state
         softmax_out = self.linear(hlast)
-        # softmax_out = self.softmax(out2softmax_in)
-        softmax_out = torch.stack([softmax_out], 0)#.to(cpu)
-        # print(softmax_out)
-        # print(softmax_out[0][0], softmax_out[0][1])
+        softmax_out = torch.stack([softmax_out], 0)
         return softmax_out
-        
-
-
-        # self.wi = Parameter(torch.Tensor(hidden_size, input_size))
-        # self.wf = Parameter(torch.Tensor(hidden_size, hidden_size))
-        # self.wo = Parameter(torch.Tensor(hidden_size, hidden_size))
-        # self.wg = Parameter(torch.Tensor(hidden_size, hidden_size))
-        # self.ui = Parameter(torch.Tensor(hidden_size, input_size))
-        # self.uf = Parameter(torch.Tensor(hidden_size, hidden_size))
-        # self.uo = Parameter(torch.Tensor(hidden_size, hidden_size))
-        # self.ug = Parameter(torch.Tensor(hidden_size, hidden_size))
-
-        # if bias:
-        #     self.bi = Parameter(torch.Tensor(hidden_size))
-        #     self.bf = Parameter(torch.Tensor(hidden_size))
-        #     self.bo = Parameter(torch.Tensor(hidden_size))
-        #     self.bg = Parameter(torch.Tensor(hidden_size))
-        # else:
-        #     self.register_parameter('bi', None)
-        #     self.register_parameter('bf', None)
-        #     self.register_parameter('bo', None)
-        #     self.register_parameter('bg', None)
